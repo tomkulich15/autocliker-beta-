@@ -1,42 +1,49 @@
 import time
 import PySimpleGUI as sg
 from pynput import mouse
-import pyautogui
+import threading
 
 # Global variables
 positions = []
 adding_position = False
+window = None
 listener = None
 
 # Function for clicking at specified positions
 def click_positions(positions):
     for pos in positions:
         try:
-            log_message(f'Moving to position ({pos[0]}, {pos[1]})')
-            pyautogui.moveTo(pos[0], pos[1])  # Move to the position
             log_message(f'Clicking at position ({pos[0]}, {pos[1]})')
-            pyautogui.click(pos[0], pos[1])  # Perform actual click
+            mouse_controller = mouse.Controller()
+            mouse_controller.position = pos
+            mouse_controller.click(mouse.Button.left)
             time.sleep(1)  # Time delay between clicks
         except Exception as e:
             log_message(f'Error clicking at position ({pos[0]}, {pos[1]}): {e}')
 
 # Function to handle mouse click events
 def on_click(x, y, button, pressed):
+    global positions, adding_position, listener
     if pressed:
-        global positions, window, adding_position, listener
         if adding_position:
             positions.append((x, y))
             window['position'].update(f'{x}, {y}')
             window['positions_list'].update(values=[f'({p[0]}, {p[1]})' for p in positions])
             log_message(f'Added position: ({x}, {y})')
             adding_position = False
-            listener.stop()  # Stop the listener
-        return False  # Stop listener
+            return False  # Stop listener
+    return True  # Continue listener
 
 # Function to log messages to the output box
 def log_message(message):
     window['log'].print(message)
     print(message)  # Also print to the console for debug purposes
+
+# Mouse listener thread function
+def mouse_listener_thread():
+    global listener
+    with mouse.Listener(on_click=on_click) as listener:
+        listener.join()
 
 # Main function to run the application
 def main():
@@ -61,52 +68,47 @@ def main():
 
     window = sg.Window('Autoclicker', layout)
 
-    try:
-        while True:
-            event, values = window.read()
+    while True:
+        event, values = window.read()
 
-            if event == sg.WIN_CLOSED or event == 'Exit':
-                break
-            elif event == '+ Add Position':
-                window['position'].update('Click anywhere to add position...')
-                adding_position = True
-                listener = mouse.Listener(on_click=on_click)
-                listener.start()
+        if event == sg.WIN_CLOSED or event == 'Exit':
+            break
+        elif event == '+ Add Position':
+            window['position'].update('Click anywhere to add position...')
+            adding_position = True
+            threading.Thread(target=mouse_listener_thread, daemon=True).start()
 
-            elif event == '- Remove Position':
-                if positions:
-                    pos = positions.pop()
-                    window['positions_list'].update(values=[f'({p[0]}, {p[1]})' for p in positions])
-                    log_message(f'Removed position: ({pos[0]}, {pos[1]})')
-                    window['position'].update('')
-                else:
-                    log_message('No positions to remove.')
+        elif event == '- Remove Position':
+            if positions:
+                pos = positions.pop()
+                window['positions_list'].update(values=[f'({p[0]}, {p[1]})' for p in positions])
+                log_message(f'Removed position: ({pos[0]}, {pos[1]})')
+                window['position'].update('')
+            else:
+                log_message('No positions to remove.')
 
-            elif event == 'Start':
-                try:
-                    count = int(values['count'])
-                    wait_time = float(values['wait'])
+        elif event == 'Start':
+            try:
+                count = int(values['count'])
+                wait_time = float(values['wait'])
 
-                    log_message(f'Starting autoclicker for {count} times...')
-                    for _ in range(count):
-                        click_positions(positions)
-                        time.sleep(wait_time)
+                log_message(f'Starting autoclicker for {count} times...')
+                for _ in range(count):
+                    click_positions(positions)
+                    time.sleep(wait_time)
 
-                    log_message('Autoclicker finished.')
+                log_message('Autoclicker finished.')
 
-                except ValueError:
-                    log_message('Invalid input. Please enter numeric values.')
-                except Exception as e:
-                    log_message(f'Error: {e}')
+            except ValueError:
+                log_message('Invalid input. Please enter numeric values.')
+            except Exception as e:
+                log_message(f'Error: {e}')
 
-            elif event == 'Stop':
-                log_message('Autoclicker stopped.')
-                adding_position = False
+        elif event == 'Stop':
+            log_message('Autoclicker stopped.')
+            adding_position = False
 
-    finally:
-        if listener and listener.running:
-            listener.stop()
-        window.close()
+    window.close()
 
 if __name__ == '__main__':
     main()
