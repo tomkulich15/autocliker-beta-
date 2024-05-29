@@ -44,7 +44,7 @@ def main():
 
     # Define layout
     layout = [
-        [sg.Text('Autoclicker Settings', size=(30, 1), justification='center', font=('Helvetica', 16))],
+        [sg.Text('Autoclicker', size=(30, 1), justification='center', font=('Helvetica', 16))],
         [sg.Text('Click Position (x, y):')],
         [sg.InputText(key='position', size=(20, 1), disabled=True),
          sg.Button('+ Add Position'),
