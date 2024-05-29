@@ -1,2 +1,2 @@
 # mine-autocliker-beta-
-mine autoclicker (beta)
+need to install: pip install PySimpleGUI pynput pyautogui
