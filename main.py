@@ -55,7 +55,8 @@ def main():
         [sg.Slider(range=(1, 10), orientation='h', size=(20, 15), default_value=1, key='count')],
         [sg.Button('Start'), sg.Button('Stop'), sg.Button('Exit')],
         [sg.Listbox(values=[], size=(50, 10), key='positions_list')],
-        [sg.Multiline(size=(50, 10), key='log', autoscroll=True, disabled=True)]
+        [sg.Text('LOG', size=(10, 1), font=('Helvetica', 12), pad=((0, 0), (0, 0)))],
+        [sg.Multiline(size=(50, 5), key='log', autoscroll=True, disabled=True)]
     ]
 
     window = sg.Window('Autoclicker', layout)
