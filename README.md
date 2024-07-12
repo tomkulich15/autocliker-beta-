@@ -1,12 +1,12 @@
-# Mine-Autoclicker-Beta
+# Autoclicker-Beta
 
 ## Overview
 
-Mine-Autoclicker-Beta is a simple yet powerful tool that automates mouse clicks and scroll actions. It's designed to help you perform repetitive tasks effortlessly. This guide will walk you through the installation process and how to use the autoclicker.
+Autoclicker is a simple yet powerful tool that automates mouse clicks and scroll actions. It's designed to help you perform repetitive tasks effortlessly. This guide will walk you through the installation process and how to use the autoclicker.
 
 ## Installation
 
-To get started with Mine-Autoclicker-Beta, you'll need to install the necessary dependencies. Run the following command to install them:
+To get started with Autoclicker, you'll need to install the necessary dependencies. Run the following command to install them:
 
 ```bash
 pip install PySimpleGUI pynput
@@ -15,7 +15,7 @@ pip install PySimpleGUI pynput
 ## How to Use
 
 1. **Launch the Autoclicker:**
-   Run the Python script to open the Mine-Autoclicker-Beta GUI.
+   Run the Python script to open the Autoclicker GUI.
 
 2. **Adding Click Positions:**
    - Click on the '+ Add Click Position' button.
@@ -71,4 +71,4 @@ Contributions are welcome! If you have any ideas or improvements, feel free to o
 
 ---
 
-With Mine-Autoclicker-Beta, automating repetitive mouse actions is easier than ever. Enjoy your productivity boost!
+With Mine-Autoclicker, automating repetitive mouse actions is easier than ever. Enjoy your productivity boost!
