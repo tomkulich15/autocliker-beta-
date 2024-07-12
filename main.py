@@ -7,7 +7,7 @@ import ctypes
 import json
 import os
 
-Action = Union[Tuple[int, int], str]
+Action = Union[Tuple[int, int], Tuple[str, float]]
 
 class Autoclicker:
     def __init__(self):
@@ -27,27 +27,24 @@ class Autoclicker:
             user32.ReleaseDC(0, hdc)
             return dpi / 96
         except Exception as e:
-            self.log_message(f'Error getting DPI scaling: {e}')
+            print(f'Error getting DPI scaling: {e}')
             return 1.0
 
-    def perform_actions(self, actions: List[Action], wait_time: float, dpi_scaling: float, scroll_up_amount: float, scroll_down_amount: float):
+    def perform_actions(self, actions: List[Action], wait_time: float, dpi_scaling: float):
         mouse_controller = mouse.Controller()
         for action in actions:
             try:
-                if isinstance(action, tuple):
+                if isinstance(action, tuple) and len(action) == 2 and isinstance(action[0], int):
                     adjusted_pos = (int(action[0] / dpi_scaling), int(action[1] / dpi_scaling))
-                    self.log_message(f'Clicking at position ({adjusted_pos[0]}, {adjusted_pos[1]})')
                     mouse_controller.position = adjusted_pos
                     mouse_controller.click(mouse.Button.left)
-                elif action == 'scroll_up':
-                    self.log_message(f'Scrolling up {scroll_up_amount} pixels')
-                    mouse_controller.scroll(0, scroll_up_amount)
-                elif action == 'scroll_down':
-                    self.log_message(f'Scrolling down {scroll_down_amount} pixels')
-                    mouse_controller.scroll(0, -scroll_down_amount)
+                elif isinstance(action, tuple) and action[0] == 'scroll_up':
+                    mouse_controller.scroll(0, action[1])
+                elif isinstance(action, tuple) and action[0] == 'scroll_down':
+                    mouse_controller.scroll(0, -action[1])
                 time.sleep(wait_time)
             except Exception as e:
-                self.log_message(f'Error performing action {action}: {e}')
+                print(f'Error performing action {action}: {e}')
 
     def on_click(self, x: int, y: int, button, pressed: bool):
         if pressed and self.adding_position:
@@ -63,8 +60,9 @@ class Autoclicker:
     def on_scroll(self, x, y, dx, dy):
         if self.adding_position:
             action = 'scroll_up' if dy > 0 else 'scroll_down'
-            self.positions.append(action)
-            self.window.write_event_value('-POSITION_ADDED-', action)
+            amount = self.window[f'{action}_amount'].get()
+            self.positions.append((action, float(amount)))
+            self.window.write_event_value('-POSITION_ADDED-', (action, float(amount)))
             self.adding_position = False
             return False
         return True
@@ -74,19 +72,14 @@ class Autoclicker:
         listener.start()
         listener.join()
 
-    def log_message(self, message: str):
-        if self.window:
-            self.window['log'].print(message)
-        print(message)
-
     def save_config(self):
         config = {'positions': self.positions}
         try:
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
-            self.log_message('Configuration saved.')
+            print('Configuration saved.')
         except Exception as e:
-            self.log_message(f'Error saving configuration: {e}')
+            print(f'Error saving configuration: {e}')
 
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -96,39 +89,35 @@ class Autoclicker:
                 self.positions = config.get('positions', [])
                 if self.window:
                     self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                self.log_message('Configuration loaded.')
+                print('Configuration loaded.')
             except Exception as e:
-                self.log_message(f'Error loading configuration: {e}')
+                print(f'Error loading configuration: {e}')
         else:
-            self.log_message(f'Configuration file {self.config_file} does not exist.')
+            print(f'Configuration file {self.config_file} does not exist.')
 
     def clear_positions(self):
         self.positions.clear()
         if self.window:
             self.window['positions_list'].update(values=[])
-        self.log_message('All positions cleared.')
+        print('All positions cleared.')
 
     def run(self):
         layout = [
-            [sg.Text('Autoclicker', size=(30, 1), justification='center', font=('Helvetica', 16))],
+            [sg.Text('Autoclicker', size=(20, 1), justification='center', font=('Helvetica', 14))],
             [sg.Text('Click Position (x, y) or Scroll Action:')],
             [sg.InputText(key='position', size=(20, 1), disabled=True),
-             sg.Button('+ Add Click Position'),
-             sg.Button('+ Add Scroll Up'),
-             sg.Button('+ Add Scroll Down'),
-             sg.Button('- Remove Last Action')],
+             sg.Button('+ Add Click Position')],
+            [sg.Text('Scroll up amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_up_amount'),
+             sg.Button('+ Add Scroll Up')],
+            [sg.Text('Scroll down amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_down_amount'),
+             sg.Button('+ Add Scroll Down')],
+            [sg.Button('- Remove Last Action')],
             [sg.Text('Wait time (seconds):')],
             [sg.Slider(range=(0, 10), orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
             [sg.Text('Number of actions to perform:')],
             [sg.Slider(range=(1, 10), orientation='h', size=(20, 15), default_value=1, key='count')],
-            [sg.Text('Scroll up amount (pixels):')],
-            [sg.Slider(range=(0.5, 100), orientation='h', size=(20, 15), default_value=10, resolution=0.5, key='scroll_up_amount')],
-            [sg.Text('Scroll down amount (pixels):')],
-            [sg.Slider(range=(0.5, 100), orientation='h', size=(20, 15), default_value=10, resolution=0.5, key='scroll_down_amount')],
             [sg.Button('Start'), sg.Button('Stop'), sg.Button('Exit')],
             [sg.Listbox(values=[], size=(50, 10), key='positions_list')],
-            [sg.Text('LOG', size=(10, 1), font=('Helvetica', 12), pad=((0, 0), (0, 0)))],
-            [sg.Multiline(size=(50, 5), key='log', autoscroll=True, disabled=True)],
             [sg.Button('Save Config'), sg.Button('Load Config'), sg.Button('Clear All')],
             [sg.Text('DPI Scaling Factor:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
         ]
@@ -148,48 +137,48 @@ class Autoclicker:
                     self.mouse_listener_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
                     self.mouse_listener_thread.start()
                 elif event == '+ Add Scroll Up':
-                    self.positions.append('scroll_up')
+                    amount = float(values['scroll_up_amount'])
+                    self.positions.append(('scroll_up', amount))
                     self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                    self.log_message('Added scroll up action.')
+                    print('Added scroll up action.')
                 elif event == '+ Add Scroll Down':
-                    self.positions.append('scroll_down')
+                    amount = float(values['scroll_down_amount'])
+                    self.positions.append(('scroll_down', amount))
                     self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                    self.log_message('Added scroll down action.')
+                    print('Added scroll down action.')
                 elif event == '- Remove Last Action':
                     if self.positions:
                         action = self.positions.pop()
                         self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                        self.log_message(f'Removed action: {action}')
+                        print(f'Removed action: {action}')
                     else:
-                        self.log_message('No actions to remove.')
+                        print('No actions to remove.')
                 elif event == 'Start':
                     try:
                         count = int(values['count'])
                         wait_time = float(values['wait'])
                         dpi_scaling = float(values['dpi_scaling'])
-                        scroll_up_amount = float(values['scroll_up_amount'])
-                        scroll_down_amount = float(values['scroll_down_amount'])
 
-                        self.log_message(f'Starting autoclicker for {count} times...')
+                        print(f'Starting autoclicker for {count} times...')
                         for _ in range(count):
-                            self.perform_actions(self.positions, wait_time, dpi_scaling, scroll_up_amount, scroll_down_amount)
+                            self.perform_actions(self.positions, wait_time, dpi_scaling)
                             time.sleep(wait_time)
-                        self.log_message('Autoclicker finished.')
+                        print('Autoclicker finished.')
                     except ValueError:
-                        self.log_message('Invalid input. Please enter numeric values.')
+                        print('Invalid input. Please enter numeric values.')
                     except Exception as e:
-                        self.log_message(f'Error: {e}')
+                        print(f'Error: {e}')
                 elif event == 'Stop':
-                    self.log_message('Autoclicker stopped.')
+                    print('Autoclicker stopped.')
                     self.adding_position = False
                 elif event == '-POSITION_ADDED-':
                     action = values[event]
                     if isinstance(action, tuple):
                         self.window['position'].update(f'{action[0]}, {action[1]}')
                     else:
-                        self.window['position'].update(action)
+                        self.window['position'].update(f'{action[0]} {action[1]}')
                     self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                    self.log_message(f'Added action: {action}')
+                    print(f'Added action: {action}')
                 elif event == 'Save Config':
                     self.save_config()
                 elif event == 'Load Config':
@@ -197,7 +186,7 @@ class Autoclicker:
                 elif event == 'Clear All':
                     self.clear_positions()
         except Exception as e:
-            self.log_message(f'An error occurred: {e}')
+            print(f'An error occurred: {e}')
         finally:
             self.window.close()
 
