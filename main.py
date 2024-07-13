@@ -102,24 +102,30 @@ class Autoclicker:
         print('All positions cleared.')
 
     def run(self):
+        sg.theme('DarkBlue3')  # Set a theme for the window
+
         layout = [
-            [sg.Text('Autoclicker', size=(20, 1), justification='center', font=('Helvetica', 14))],
-            [sg.Text('Click Position (x, y) or Scroll Action:')],
-            [sg.InputText(key='position', size=(20, 1), disabled=True),
-             sg.Button('+ Add Click Position')],
-            [sg.Text('Scroll up amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_up_amount'),
-             sg.Button('+ Add Scroll Up')],
-            [sg.Text('Scroll down amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_down_amount'),
-             sg.Button('+ Add Scroll Down')],
-            [sg.Button('- Remove Last Action')],
-            [sg.Text('Wait time (seconds):')],
-            [sg.Slider(range=(0, 10), orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
-            [sg.Text('Number of actions to perform:')],
-            [sg.Slider(range=(1, 10), orientation='h', size=(20, 15), default_value=1, key='count')],
+            [sg.Text('Autoclicker', size=(20, 1), justification='center', font=('Helvetica', 18), relief=sg.RELIEF_RIDGE)],
+            [sg.Frame(layout=[
+                [sg.Text('Click Position (x, y) or Scroll Action:')],
+                [sg.InputText(key='position', size=(25, 1), disabled=True),
+                 sg.Button('+ Add Click Position')],
+                [sg.Text('Scroll up amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_up_amount'),
+                 sg.Button('+ Add Scroll Up')],
+                [sg.Text('Scroll down amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_down_amount'),
+                 sg.Button('+ Add Scroll Down')],
+                [sg.Button('- Remove Last Action')]
+            ], title='Actions', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(10, 10))],
+            [sg.Frame(layout=[
+                [sg.Text('Wait time (seconds):')],
+                [sg.Slider(range=(0, 10), orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
+                [sg.Text('Number of actions to perform:')],
+                [sg.Slider(range=(1, 10), orientation='h', size=(20, 15), default_value=1, key='count')],
+                [sg.Text('DPI Scaling Factor:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
+            ], title='Settings', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(10, 10))],
             [sg.Button('Start'), sg.Button('Stop'), sg.Button('Exit')],
             [sg.Listbox(values=[], size=(50, 10), key='positions_list')],
-            [sg.Button('Save Config'), sg.Button('Load Config'), sg.Button('Clear All')],
-            [sg.Text('DPI Scaling Factor:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
+            [sg.Button('Save Config'), sg.Button('Load Config'), sg.Button('Clear All')]
         ]
 
         self.window = sg.Window('Autoclicker', layout, finalize=True)
