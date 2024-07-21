@@ -17,7 +17,8 @@ Action = Union[Tuple[int, int], Tuple[str, float]]
 CONFIG_FILE = 'autoclicker_config.json'
 DPI_SCALING_FACTOR = 96
 WAIT_TIME_SLIDER_RANGE = (0, 10)
-ACTION_COUNT_SLIDER_RANGE = (1, 10)
+ACTION_COUNT_SLIDER_RANGE = (1, 100)
+VERSION = "v0.0.5"
 
 class Autoclicker:
     def __init__(self):
@@ -26,6 +27,7 @@ class Autoclicker:
         self.window = None
         self.load_config()
         self.dpi_scaling = self.get_dpi_scaling()
+        self.running = False
 
     def get_dpi_scaling(self) -> float:
         try:
@@ -42,6 +44,8 @@ class Autoclicker:
     def perform_actions(self, actions: List[Action], wait_time: float, dpi_scaling: float):
         mouse_controller = mouse.Controller()
         for action in actions:
+            if not self.running:
+                break
             try:
                 if isinstance(action, tuple) and len(action) == 2 and isinstance(action[0], int):
                     adjusted_pos = (int(action[0] / dpi_scaling), int(action[1] / dpi_scaling))
@@ -68,7 +72,7 @@ class Autoclicker:
     def on_scroll(self, x, y, dx, dy):
         if self.adding_position:
             action = 'scroll_up' if dy > 0 else 'scroll_down'
-            amount = float(self.window[f'{action}_amount'].get())
+            amount = float(self.window['scroll_amount'].get())
             self.positions.append((action, amount))
             self.window.write_event_value('-POSITION_ADDED-', (action, amount))
             self.adding_position = False
@@ -110,99 +114,110 @@ class Autoclicker:
         logging.info('All positions cleared.')
 
     def run(self):
-        sg.theme('DarkBlue3')  # Set a theme for the window
+        sg.theme('DarkBlue3')
 
         layout = [
-            [sg.Text('Autoclicker', size=(20, 1), justification='center', font=('Helvetica', 18), relief=sg.RELIEF_RIDGE)],
+            [sg.Text('Autoclicker', size=(25, 1), justification='center', font=('Helvetica', 16), relief=sg.RELIEF_RIDGE)],
             [sg.Frame(layout=[
                 [sg.Text('Click Position (x, y) or Scroll Action:')],
-                [sg.InputText(key='position', size=(25, 1), disabled=True),
-                 sg.Button('+ Add Click Position')],
-                [sg.Text('Scroll up amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_up_amount'),
-                 sg.Button('+ Add Scroll Up')],
-                [sg.Text('Scroll down amount (pixels):'), sg.InputText(default_text='10', size=(5, 1), key='scroll_down_amount'),
-                 sg.Button('+ Add Scroll Down')],
-                [sg.Button('- Remove Last Action')]
-            ], title='Actions', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(10, 10))],
+                [sg.InputText(key='position', size=(20, 1), disabled=True),
+                 sg.Button('+ Click', size=(8, 1))],
+                [sg.Text('Scroll amount:'), 
+                 sg.InputText(default_text='10', size=(5, 1), key='scroll_amount'),
+                 sg.Button('+ Up', size=(5, 1)), sg.Button('+ Down', size=(5, 1))],
+                [sg.Button('- Remove Last', size=(15, 1))]
+            ], title='Actions', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
             [sg.Frame(layout=[
-                [sg.Text('Wait time (seconds):')],
-                [sg.Slider(range=WAIT_TIME_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
-                [sg.Text('Number of actions to perform:')],
-                [sg.Slider(range=ACTION_COUNT_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, key='count')],
-                [sg.Text('DPI Scaling Factor:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
-            ], title='Settings', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(10, 10))],
-            [sg.Button('Start'), sg.Button('Stop'), sg.Button('Exit')],
-            [sg.Listbox(values=[], size=(50, 10), key='positions_list')],
-            [sg.Button('Save Config'), sg.Button('Load Config'), sg.Button('Clear All')]
+                [sg.Text('Wait time (s):'), 
+                 sg.Slider(range=WAIT_TIME_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
+                [sg.Text('Repetitions:'), 
+                 sg.Slider(range=ACTION_COUNT_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, key='count')],
+                [sg.Text('DPI Scale:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
+            ], title='Settings', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
+            [sg.Frame(layout=[
+                [sg.Listbox(values=[], size=(30, 5), key='positions_list')],
+                [sg.Button('Save', size=(7, 1)), sg.Button('Load', size=(7, 1)), sg.Button('Clear', size=(7, 1))]
+            ], title='Action List', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
+            [sg.Button('Start', size=(10, 2), button_color=('white', 'green')),
+             sg.Button('Stop', size=(10, 2), button_color=('white', 'red')),
+             sg.Button('Exit', size=(10, 2))],
+            [sg.Text(f'Version: {VERSION}', justification='right', size=(40, 1))]
         ]
 
-        self.window = sg.Window('Autoclicker', layout, finalize=True)
+        self.window = sg.Window('Autoclicker', layout, finalize=True, resizable=True)
 
         try:
             self.load_config()
             while True:
-                event, values = self.window.read()
+                event, values = self.window.read(timeout=100)
                 if event == sg.WIN_CLOSED or event == 'Exit':
                     self.save_config()
                     break
-                elif event == '+ Add Click Position':
-                    self.window['position'].update('Click anywhere to add position...')
+                elif event == '+ Click':
+                    self.window['position'].update('Click anywhere...')
                     self.adding_position = True
                     self.mouse_listener_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
                     self.mouse_listener_thread.start()
-                elif event == '+ Add Scroll Up':
-                    amount = float(values['scroll_up_amount'])
-                    self.positions.append(('scroll_up', amount))
-                    self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                    logging.info('Added scroll up action.')
-                elif event == '+ Add Scroll Down':
-                    amount = float(values['scroll_down_amount'])
-                    self.positions.append(('scroll_down', amount))
-                    self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                    logging.info('Added scroll down action.')
-                elif event == '- Remove Last Action':
+                elif event in ('+ Up', '+ Down'):
+                    action = 'scroll_up' if event == '+ Up' else 'scroll_down'
+                    amount = float(values['scroll_amount'])
+                    self.positions.append((action, amount))
+                    self.update_positions_list()
+                    logging.info(f'Added {action} action.')
+                elif event == '- Remove Last':
                     if self.positions:
-                        action = self.positions.pop()
-                        self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
-                        logging.info(f'Removed action: {action}')
+                        self.positions.pop()
+                        self.update_positions_list()
+                        logging.info('Removed last action.')
                     else:
                         logging.warning('No actions to remove.')
                 elif event == 'Start':
-                    try:
-                        count = int(values['count'])
-                        wait_time = float(values['wait'])
-                        dpi_scaling = float(values['dpi_scaling'])
-
-                        logging.info(f'Starting autoclicker for {count} times...')
-                        for _ in range(count):
-                            self.perform_actions(self.positions, wait_time, dpi_scaling)
-                            time.sleep(wait_time)
-                        logging.info('Autoclicker finished.')
-                    except ValueError:
-                        logging.error('Invalid input. Please enter numeric values.')
-                    except Exception as e:
-                        logging.error(f'Error: {e}')
+                    if not self.running:
+                        self.running = True
+                        threading.Thread(target=self.run_autoclicker, args=(values,), daemon=True).start()
                 elif event == 'Stop':
+                    self.running = False
                     logging.info('Autoclicker stopped.')
-                    self.adding_position = False
                 elif event == '-POSITION_ADDED-':
                     action = values[event]
-                    if isinstance(action, tuple):
-                        self.window['position'].update(f'{action[0]}, {action[1]}')
-                    else:
-                        self.window['position'].update(f'{action[0]} {action[1]}')
-                    self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
+                    self.window['position'].update(f'{action[0]}, {action[1]}' if isinstance(action, tuple) else f'{action[0]} {action[1]}')
+                    self.update_positions_list()
                     logging.info(f'Added action: {action}')
-                elif event == 'Save Config':
+                elif event == 'Save':
                     self.save_config()
-                elif event == 'Load Config':
+                elif event == 'Load':
                     self.load_config()
-                elif event == 'Clear All':
+                elif event == 'Clear':
                     self.clear_positions()
         except Exception as e:
             logging.error(f'An error occurred: {e}')
         finally:
             self.window.close()
+
+    def update_positions_list(self):
+        self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
+
+    def run_autoclicker(self, values):
+        try:
+            count = int(values['count'])
+            wait_time = float(values['wait'])
+            dpi_scaling = float(values['dpi_scaling'])
+
+            logging.info(f'Starting autoclicker for {count} repetitions...')
+            for _ in range(count):
+                if not self.running:
+                    break
+                self.perform_actions(self.positions, wait_time, dpi_scaling)
+                time.sleep(wait_time)
+            logging.info('Autoclicker finished.')
+        except ValueError:
+            logging.error('Invalid input. Please enter numeric values.')
+        except Exception as e:
+            logging.error(f'Error: {e}')
+        finally:
+            self.running = False
+            self.window['Start'].update(disabled=False)
+            self.window['Stop'].update(disabled=True)
 
 if __name__ == '__main__':
     autoclicker = Autoclicker()
