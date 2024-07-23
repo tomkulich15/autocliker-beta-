@@ -9,7 +9,7 @@ Autoclicker is a simple yet powerful tool that automates mouse clicks and scroll
 To get started with Autoclicker, you'll need to install the necessary dependencies. Run the following command to install them:
 
 ```bash
-pip install PySimpleGUI pynput
+pip install pynput
 ```
 
 ## How to Use
