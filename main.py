@@ -1,5 +1,6 @@
 import time
-import PySimpleGUI as sg
+import tkinter as tk
+from tkinter import ttk, messagebox
 from pynput import mouse
 import threading
 from typing import List, Tuple, Union
@@ -18,7 +19,7 @@ CONFIG_FILE = 'autoclicker_config.json'
 DPI_SCALING_FACTOR = 96
 WAIT_TIME_SLIDER_RANGE = (0, 10)
 ACTION_COUNT_SLIDER_RANGE = (1, 100)
-VERSION = "v0.0.5"
+VERSION = "v0.0.5.3"
 
 class Autoclicker:
     def __init__(self):
@@ -28,6 +29,7 @@ class Autoclicker:
         self.load_config()
         self.dpi_scaling = self.get_dpi_scaling()
         self.running = False
+        self.last_action = None
 
     def get_dpi_scaling(self) -> float:
         try:
@@ -63,8 +65,8 @@ class Autoclicker:
             scale_factor = self.get_dpi_scaling()
             scaled_x = int(x * scale_factor)
             scaled_y = int(y * scale_factor)
-            self.positions.append((scaled_x, scaled_y))
-            self.window.write_event_value('-POSITION_ADDED-', (scaled_x, scaled_y))
+            self.last_action = (scaled_x, scaled_y)
+            self.window.event_generate('<<PositionAdded>>')
             self.adding_position = False
             return False
         return True
@@ -72,9 +74,9 @@ class Autoclicker:
     def on_scroll(self, x, y, dx, dy):
         if self.adding_position:
             action = 'scroll_up' if dy > 0 else 'scroll_down'
-            amount = float(self.window['scroll_amount'].get())
-            self.positions.append((action, amount))
-            self.window.write_event_value('-POSITION_ADDED-', (action, amount))
+            amount = float(self.scroll_amount.get())
+            self.last_action = (action, amount)
+            self.window.event_generate('<<PositionAdded>>')
             self.adding_position = False
             return False
         return True
@@ -99,8 +101,8 @@ class Autoclicker:
                 with open(CONFIG_FILE, 'r') as f:
                     config = json.load(f)
                 self.positions = config.get('positions', [])
-                if self.window:
-                    self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
+                if hasattr(self, 'positions_list'):
+                    self.update_positions_list()
                 logging.info('Configuration loaded.')
             except Exception as e:
                 logging.error(f'Error loading configuration: {e}')
@@ -109,116 +111,194 @@ class Autoclicker:
 
     def clear_positions(self):
         self.positions.clear()
-        if self.window:
-            self.window['positions_list'].update(values=[])
+        self.update_positions_list()
         logging.info('All positions cleared.')
 
     def run(self):
-        sg.theme('DarkBlue3')
+        self.window = tk.Tk()
+        self.window.title('Autoclicker')
+        self.window.geometry('395x700')  # Increased the height for additional controls
+        self.window.resizable(False, False)  # Disable window resizing
+        self.window.configure(bg='#e0e0e0')  # Set light gray background
 
-        layout = [
-            [sg.Text('Autoclicker', size=(25, 1), justification='center', font=('Helvetica', 16), relief=sg.RELIEF_RIDGE)],
-            [sg.Frame(layout=[
-                [sg.Text('Click Position (x, y) or Scroll Action:')],
-                [sg.InputText(key='position', size=(20, 1), disabled=True),
-                 sg.Button('+ Click', size=(8, 1))],
-                [sg.Text('Scroll amount:'), 
-                 sg.InputText(default_text='10', size=(5, 1), key='scroll_amount'),
-                 sg.Button('+ Up', size=(5, 1)), sg.Button('+ Down', size=(5, 1))],
-                [sg.Button('- Remove Last', size=(15, 1))]
-            ], title='Actions', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
-            [sg.Frame(layout=[
-                [sg.Text('Wait time (s):'), 
-                 sg.Slider(range=WAIT_TIME_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, resolution=0.1, key='wait')],
-                [sg.Text('Repetitions:'), 
-                 sg.Slider(range=ACTION_COUNT_SLIDER_RANGE, orientation='h', size=(20, 15), default_value=1, key='count')],
-                [sg.Text('DPI Scale:'), sg.InputText(default_text=str(self.dpi_scaling), size=(5, 1), key='dpi_scaling')]
-            ], title='Settings', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
-            [sg.Frame(layout=[
-                [sg.Listbox(values=[], size=(30, 5), key='positions_list')],
-                [sg.Button('Save', size=(7, 1)), sg.Button('Load', size=(7, 1)), sg.Button('Clear', size=(7, 1))]
-            ], title='Action List', relief=sg.RELIEF_SUNKEN, title_color='yellow', pad=(5, 5))],
-            [sg.Button('Start', size=(10, 2), button_color=('white', 'green')),
-             sg.Button('Stop', size=(10, 2), button_color=('white', 'red')),
-             sg.Button('Exit', size=(10, 2))],
-            [sg.Text(f'Version: {VERSION}', justification='right', size=(40, 1))]
-        ]
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('TFrame', background='#e0e0e0')
+        style.configure('TLabelframe', background='#e0e0e0')
+        style.configure('TLabelframe.Label', background='#e0e0e0')
+        style.configure('TButton', background='#d0d0d0')
+        style.configure('TLabel', background='#e0e0e0')
+        style.configure('TScale', background='#e0e0e0')
 
-        self.window = sg.Window('Autoclicker', layout, finalize=True, resizable=True)
+        main_frame = ttk.Frame(self.window, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        try:
-            self.load_config()
-            while True:
-                event, values = self.window.read(timeout=100)
-                if event == sg.WIN_CLOSED or event == 'Exit':
-                    self.save_config()
-                    break
-                elif event == '+ Click':
-                    self.window['position'].update('Click anywhere...')
-                    self.adding_position = True
-                    self.mouse_listener_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
-                    self.mouse_listener_thread.start()
-                elif event in ('+ Up', '+ Down'):
-                    action = 'scroll_up' if event == '+ Up' else 'scroll_down'
-                    amount = float(values['scroll_amount'])
-                    self.positions.append((action, amount))
-                    self.update_positions_list()
-                    logging.info(f'Added {action} action.')
-                elif event == '- Remove Last':
-                    if self.positions:
-                        self.positions.pop()
-                        self.update_positions_list()
-                        logging.info('Removed last action.')
-                    else:
-                        logging.warning('No actions to remove.')
-                elif event == 'Start':
-                    if not self.running:
-                        self.running = True
-                        threading.Thread(target=self.run_autoclicker, args=(values,), daemon=True).start()
-                elif event == 'Stop':
-                    self.running = False
-                    logging.info('Autoclicker stopped.')
-                elif event == '-POSITION_ADDED-':
-                    action = values[event]
-                    self.window['position'].update(f'{action[0]}, {action[1]}' if isinstance(action, tuple) else f'{action[0]} {action[1]}')
-                    self.update_positions_list()
-                    logging.info(f'Added action: {action}')
-                elif event == 'Save':
-                    self.save_config()
-                elif event == 'Load':
-                    self.load_config()
-                elif event == 'Clear':
-                    self.clear_positions()
-        except Exception as e:
-            logging.error(f'An error occurred: {e}')
-        finally:
-            self.window.close()
+        ttk.Label(main_frame, text='Autoclicker', font=('Helvetica', 16)).grid(column=0, row=0, columnspan=3)
+
+        # Actions Frame
+        actions_frame = ttk.LabelFrame(main_frame, text='Actions', padding="5")
+        actions_frame.grid(column=0, row=1, columnspan=3, sticky=(tk.W, tk.E))
+
+        self.position_var = tk.StringVar()
+        ttk.Label(actions_frame, text='Click Position (x, y) or Scroll Action:').grid(column=0, row=0, columnspan=2)
+        ttk.Entry(actions_frame, textvariable=self.position_var, state='readonly', width=20).grid(column=0, row=1)
+        ttk.Button(actions_frame, text='+ Click', command=self.add_click, width=8).grid(column=1, row=1)
+
+        ttk.Label(actions_frame, text='Scroll amount:').grid(column=0, row=2)
+        self.scroll_amount = ttk.Entry(actions_frame, width=5)
+        self.scroll_amount.insert(0, '10')
+        self.scroll_amount.grid(column=1, row=2)
+        ttk.Button(actions_frame, text='+ Up', command=lambda: self.add_scroll('up'), width=5).grid(column=2, row=2)
+        ttk.Button(actions_frame, text='+ Down', command=lambda: self.add_scroll('down'), width=5).grid(column=3, row=2)
+
+        ttk.Button(actions_frame, text='- Remove Last', command=self.remove_last, width=12).grid(column=0, row=3, columnspan=2)
+
+        # Settings Frame
+        settings_frame = ttk.LabelFrame(main_frame, text='Settings', padding="5")
+        settings_frame.grid(column=0, row=2, columnspan=3, sticky=(tk.W, tk.E))
+
+        ttk.Label(settings_frame, text='Wait time (s):').grid(column=0, row=0)
+        self.wait_time = ttk.Scale(settings_frame, from_=WAIT_TIME_SLIDER_RANGE[0], to=WAIT_TIME_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=200)
+        self.wait_time.set(1)
+        self.wait_time.grid(column=1, row=0)
+
+        # Label to display current wait time value
+        self.wait_time_value_label = ttk.Label(settings_frame, text='1.0')
+        self.wait_time_value_label.grid(column=2, row=0, padx=10)
+
+        # Update wait_time_value_label when the slider value changes
+        self.wait_time.bind("<Motion>", self.update_wait_time_value)
+
+        ttk.Label(settings_frame, text='Repetitions:').grid(column=0, row=1)
+        self.count = ttk.Scale(settings_frame, from_=ACTION_COUNT_SLIDER_RANGE[0], to=ACTION_COUNT_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=200)
+        self.count.set(1)
+        self.count.grid(column=1, row=1)
+
+        # Label to display current count value
+        self.count_value_label = ttk.Label(settings_frame, text='1')
+        self.count_value_label.grid(column=2, row=1, padx=10)
+
+        # Update count_value_label when the slider value changes
+        self.count.bind("<Motion>", self.update_count_value)
+
+        ttk.Label(settings_frame, text='DPI Scale:').grid(column=0, row=2)
+        self.dpi_scale_entry = ttk.Entry(settings_frame, width=5)
+        self.dpi_scale_entry.insert(0, str(self.dpi_scaling))
+        self.dpi_scale_entry.grid(column=1, row=2)
+
+        # Action List Frame
+        action_list_frame = ttk.LabelFrame(main_frame, text='Action List', padding="5")
+        action_list_frame.grid(column=0, row=3, columnspan=3, sticky=(tk.W, tk.E))
+
+        self.positions_list = tk.Listbox(action_list_frame, height=5, width=30)
+        self.positions_list.grid(column=0, row=0, columnspan=3)
+
+        ttk.Button(action_list_frame, text='Save', command=self.save_config, width=6).grid(column=0, row=1)
+        ttk.Button(action_list_frame, text='Load', command=self.load_config, width=6).grid(column=1, row=1)
+        ttk.Button(action_list_frame, text='Clear', command=self.clear_positions, width=6).grid(column=2, row=1)
+
+        # Control Buttons
+        start_button = tk.Button(main_frame, text='Start', command=self.start_autoclicker, bg='green', fg='white', width=8, height=1)
+        start_button.grid(column=0, row=4, pady=10)
+        stop_button = tk.Button(main_frame, text='Stop', command=self.stop_autoclicker, bg='red', fg='white', width=8, height=1)
+        stop_button.grid(column=1, row=4, pady=10)
+        ttk.Button(main_frame, text='Exit', command=self.exit_program, width=8).grid(column=2, row=4, pady=10)
+
+        # Repetition Count Label
+        self.repetition_label = ttk.Label(main_frame, text='Repetitions Remaining: 0')
+        self.repetition_label.grid(column=0, row=5, columnspan=3, pady=10)
+
+        ttk.Label(main_frame, text=f'Version: {VERSION}').grid(column=0, row=6, columnspan=3, sticky=tk.E)
+
+        self.window.bind('<<PositionAdded>>', self.on_position_added)
+        self.update_positions_list()
+        self.window.mainloop()
+
+    def update_wait_time_value(self, event):
+        # Update wait_time_value_label with the current value of the wait time slider
+        self.wait_time_value_label.config(text=f'{self.wait_time.get():.1f}')
+
+    def update_count_value(self, event):
+        # Update count_value_label with the current value of the count slider
+        self.count_value_label.config(text=str(int(self.count.get())))
+
+    def start_autoclicker(self):
+        if not self.running:
+            self.running = True
+            threading.Thread(target=self.run_autoclicker, daemon=True).start()
+            logging.info('Autoclicker started.')
+
+    def stop_autoclicker(self):
+        self.running = False
+        logging.info('Autoclicker stopped.')
+
+    def exit_program(self):
+        self.stop_autoclicker()
+        self.window.destroy()
+        logging.info('Exiting program.')
 
     def update_positions_list(self):
-        self.window['positions_list'].update(values=[f'{p}' for p in self.positions])
+        self.positions_list.delete(0, tk.END)
+        for pos in self.positions:
+            if isinstance(pos, tuple) and len(pos) == 2 and isinstance(pos[0], int):
+                self.positions_list.insert(tk.END, f'Click at {pos}')
+            elif isinstance(pos, tuple) and pos[0] in ['scroll_up', 'scroll_down']:
+                self.positions_list.insert(tk.END, f'Scroll {pos[0]} by {pos[1]}')
 
-    def run_autoclicker(self, values):
+    def add_click(self):
+        self.adding_position = True
+        self.last_action = None
+        mouse_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
+        mouse_thread.start()
+
+    def add_scroll(self, direction: str):
         try:
-            count = int(values['count'])
-            wait_time = float(values['wait'])
-            dpi_scaling = float(values['dpi_scaling'])
+            amount = float(self.scroll_amount.get())
+            self.last_action = (f'scroll_{direction}', amount)
+            self.window.event_generate('<<PositionAdded>>')
+        except ValueError:
+            logging.error('Invalid scroll amount. Please enter a numeric value.')
+            messagebox.showerror("Error", "Invalid scroll amount. Please enter a numeric value.")
+
+    def remove_last(self):
+        if self.positions:
+            self.positions.pop()
+            self.update_positions_list()
+            logging.info('Removed last position.')
+
+    def on_position_added(self, event):
+        if self.last_action:
+            self.positions.append(self.last_action)
+            self.update_positions_list()
+            self.last_action = None
+
+    def run_autoclicker(self):
+        try:
+            count = int(self.count.get())
+            wait_time = float(self.wait_time.get())
+            dpi_scaling = float(self.dpi_scale_entry.get())
 
             logging.info(f'Starting autoclicker for {count} repetitions...')
-            for _ in range(count):
+            for i in range(count):
                 if not self.running:
                     break
                 self.perform_actions(self.positions, wait_time, dpi_scaling)
+                self.update_repetition_count(count - i - 1)  # Update the count after each repetition
                 time.sleep(wait_time)
             logging.info('Autoclicker finished.')
         except ValueError:
             logging.error('Invalid input. Please enter numeric values.')
+            messagebox.showerror("Error", "Invalid input. Please enter numeric values.")
         except Exception as e:
             logging.error(f'Error: {e}')
+            messagebox.showerror("Error", f"An error occurred: {e}")
         finally:
             self.running = False
-            self.window['Start'].update(disabled=False)
-            self.window['Stop'].update(disabled=True)
 
-if __name__ == '__main__':
-    autoclicker = Autoclicker()
-    autoclicker.run()
+    def update_repetition_count(self, remaining_reps: int):
+        # This method must be run in the main thread
+        self.window.after(0, self.repetition_label.config, {'text': f'Repetitions Remaining: {remaining_reps}'})
+
+if __name__ == "__main__":
+    app = Autoclicker()
+    app.run()
