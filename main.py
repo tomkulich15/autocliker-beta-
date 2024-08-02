@@ -17,9 +17,9 @@ Action = Union[Tuple[int, int], Tuple[str, float]]
 # Configuration Constants
 CONFIG_FILE = 'autoclicker_config.json'
 DPI_SCALING_FACTOR = 96
-WAIT_TIME_SLIDER_RANGE = (0, 5)
-ACTION_COUNT_SLIDER_RANGE = (1, 100)
-VERSION = "v0.0.6.1"
+WAIT_TIME_SLIDER_RANGE = (0, 10)
+ACTION_COUNT_SLIDER_RANGE = (1, 500)
+VERSION = "v0.0.9"
 
 class Autoclicker:
     def __init__(self):
@@ -33,6 +33,7 @@ class Autoclicker:
         self.start_key = 'f6'
         self.stop_key = 'f7'
         self.keyboard_listener = None
+        self.start_mouse_listener_thread = None
 
     def get_dpi_scaling(self) -> float:
         """Retrieve the system DPI scaling factor."""
@@ -133,19 +134,19 @@ class Autoclicker:
         """Run the main application."""
         self.window = tk.Tk()
         self.window.title('Autoclicker')
-        self.window.geometry('405x750')
+        self.window.geometry('425x800')
         self.window.resizable(False, False)
-        self.window.configure(bg='#e0e0e0')
+        self.window.configure(bg='#f5f5f5')
         self.window.attributes('-topmost', True)  # Make window stay on top
 
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TFrame', background='#e0e0e0')
-        style.configure('TLabelframe', background='#e0e0e0')
-        style.configure('TLabelframe.Label', background='#e0e0e0')
+        style.configure('TFrame', background='#f5f5f5')
+        style.configure('TLabelframe', background='#f5f5f5')
+        style.configure('TLabelframe.Label', background='#f5f5f5')
         style.configure('TButton', background='#d0d0d0')
-        style.configure('TLabel', background='#e0e0e0')
-        style.configure('TScale', background='#e0e0e0')
+        style.configure('TLabel', background='#f5f5f5')
+        style.configure('TScale', background='#f5f5f5')
 
         main_frame = ttk.Frame(self.window, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -292,6 +293,8 @@ class Autoclicker:
         self.stop_autoclicker()
         if self.keyboard_listener:
             self.keyboard_listener.stop()
+        if self.start_mouse_listener_thread:
+            self.start_mouse_listener_thread.join()
         self.window.destroy()
         logging.info('Exiting program.')
 
@@ -308,8 +311,8 @@ class Autoclicker:
         """Add a click action."""
         self.adding_position = True
         self.last_action = None
-        mouse_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
-        mouse_thread.start()
+        self.start_mouse_listener_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
+        self.start_mouse_listener_thread.start()
 
     def add_scroll(self, direction: str):
         """Add a scroll action."""
