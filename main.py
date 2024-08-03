@@ -8,6 +8,7 @@ import ctypes
 import json
 import os
 import logging
+import random
 
 # Setting up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,14 +27,19 @@ class Autoclicker:
         self.positions: List[Action] = []
         self.adding_position = False
         self.window = None
-        self.load_config()
         self.dpi_scaling = self.get_dpi_scaling()
         self.running = False
         self.last_action = None
-        self.start_key = 'f6'
-        self.stop_key = 'f7'
         self.keyboard_listener = None
         self.start_mouse_listener_thread = None
+        self.randomize_delays = False
+        self.random_delay_range = 0.0
+        self.start_key = 'f6'
+        self.stop_key = 'f6'
+        self.actions_listbox = None
+
+        # Load configuration after initializing variables
+        self.load_config()
 
     def get_dpi_scaling(self) -> float:
         """Retrieve the system DPI scaling factor."""
@@ -62,7 +68,14 @@ class Autoclicker:
                 elif isinstance(action, tuple) and action[0] in ['scroll_up', 'scroll_down']:
                     scroll_amount = action[1] if action[0] == 'scroll_up' else -action[1]
                     mouse_controller.scroll(0, scroll_amount)
-                time.sleep(wait_time)
+
+                # Apply randomization if enabled
+                actual_wait_time = wait_time
+                if self.randomize_delays:
+                    actual_wait_time += random.uniform(-self.random_delay_range, self.random_delay_range)
+                    actual_wait_time = max(0, actual_wait_time)  # Ensure wait time is not negative
+
+                time.sleep(actual_wait_time)
             except Exception as e:
                 logging.error(f'Error performing action {action}: {e}')
 
@@ -73,7 +86,8 @@ class Autoclicker:
             scaled_x = int(x * scale_factor)
             scaled_y = int(y * scale_factor)
             self.last_action = (scaled_x, scaled_y)
-            self.window.event_generate('<<PositionAdded>>')
+            self.positions.append(self.last_action)
+            self.update_actions_list()
             self.adding_position = False
             return False
         return True
@@ -84,7 +98,8 @@ class Autoclicker:
             action = 'scroll_up' if dy > 0 else 'scroll_down'
             amount = float(self.scroll_amount.get())
             self.last_action = (action, amount)
-            self.window.event_generate('<<PositionAdded>>')
+            self.positions.append(self.last_action)
+            self.update_actions_list()
             self.adding_position = False
             return False
         return True
@@ -117,8 +132,9 @@ class Autoclicker:
                     config = json.load(f)
                 self.positions = config.get('positions', [])
                 self.start_key = config.get('start_key', 'f6')
-                self.stop_key = config.get('stop_key', 'f7')
+                self.stop_key = config.get('stop_key', 'f6')
                 logging.info('Configuration loaded.')
+                self.update_actions_list()  # Update the actions list display
             except Exception as e:
                 logging.error(f'Error loading configuration: {e}')
         else:
@@ -127,31 +143,31 @@ class Autoclicker:
     def clear_positions(self):
         """Clear all recorded positions."""
         self.positions.clear()
-        self.update_positions_list()
+        self.update_actions_list()
         logging.info('All positions cleared.')
 
     def run(self):
         """Run the main application."""
         self.window = tk.Tk()
         self.window.title('Autoclicker')
-        self.window.geometry('425x800')
+        self.window.geometry('405x850')  # Reduce window size
         self.window.resizable(False, False)
-        self.window.configure(bg='#f5f5f5')
+        self.window.configure(bg='#f0f0f0')
         self.window.attributes('-topmost', True)  # Make window stay on top
 
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TFrame', background='#f5f5f5')
-        style.configure('TLabelframe', background='#f5f5f5')
-        style.configure('TLabelframe.Label', background='#f5f5f5')
-        style.configure('TButton', background='#d0d0d0')
-        style.configure('TLabel', background='#f5f5f5')
-        style.configure('TScale', background='#f5f5f5')
+        style.configure('TFrame', background='#f0f0f0')
+        style.configure('TLabelframe', background='#f0f0f0')
+        style.configure('TLabelframe.Label', background='#f0f0f0')
+        style.configure('TButton', background='#e0e0e0')
+        style.configure('TLabel', background='#f0f0f0')
+        style.configure('TScale', background='#f0f0f0')
 
         main_frame = ttk.Frame(self.window, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        ttk.Label(main_frame, text='Autoclicker', font=('Helvetica', 16)).grid(column=0, row=0, columnspan=3)
+        ttk.Label(main_frame, text='Autoclicker', font=('Helvetica', 14)).grid(column=0, row=0, columnspan=3)
 
         # Actions Frame
         actions_frame = ttk.LabelFrame(main_frame, text='Actions', padding="5")
@@ -169,14 +185,12 @@ class Autoclicker:
         ttk.Button(actions_frame, text='+ Up', command=lambda: self.add_scroll('up'), width=5).grid(column=2, row=2)
         ttk.Button(actions_frame, text='+ Down', command=lambda: self.add_scroll('down'), width=6.5).grid(column=3, row=2)
 
-        ttk.Button(actions_frame, text='- Remove Last', command=self.remove_last, width=12).grid(column=2, row=3, columnspan=3)
-
         # Settings Frame
         settings_frame = ttk.LabelFrame(main_frame, text='Settings', padding="5")
         settings_frame.grid(column=0, row=2, columnspan=3, sticky=(tk.W, tk.E))
 
         ttk.Label(settings_frame, text='Wait time (s):').grid(column=0, row=0)
-        self.wait_time = ttk.Scale(settings_frame, from_=WAIT_TIME_SLIDER_RANGE[0], to=WAIT_TIME_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=200)
+        self.wait_time = ttk.Scale(settings_frame, from_=WAIT_TIME_SLIDER_RANGE[0], to=WAIT_TIME_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=180)
         self.wait_time.set(1)
         self.wait_time.grid(column=1, row=0)
 
@@ -185,7 +199,7 @@ class Autoclicker:
         self.wait_time.bind("<Motion>", self.update_wait_time_value)
 
         ttk.Label(settings_frame, text='Repetitions:').grid(column=0, row=1)
-        self.count = ttk.Scale(settings_frame, from_=ACTION_COUNT_SLIDER_RANGE[0], to=ACTION_COUNT_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=200)
+        self.count = ttk.Scale(settings_frame, from_=ACTION_COUNT_SLIDER_RANGE[0], to=ACTION_COUNT_SLIDER_RANGE[1], orient=tk.HORIZONTAL, length=180)
         self.count.set(1)
         self.count.grid(column=1, row=1)
 
@@ -193,185 +207,161 @@ class Autoclicker:
         self.count_value_label.grid(column=2, row=1, padx=10)
         self.count.bind("<Motion>", self.update_count_value)
 
-        ttk.Label(settings_frame, text='DPI Scale:').grid(column=0, row=2)
-        self.dpi_scale_entry = ttk.Entry(settings_frame, width=5)
-        self.dpi_scale_entry.insert(0, str(self.dpi_scaling))
-        self.dpi_scale_entry.grid(column=1, row=2)
+        # Random Delays
+        self.randomize_delays_var = tk.IntVar(value=0)
+        self.randomize_delays_checkbox = ttk.Checkbutton(settings_frame, text="Randomize Delays", variable=self.randomize_delays_var, command=self.toggle_randomize_delays)
+        self.randomize_delays_checkbox.grid(column=0, row=2, columnspan=2, sticky=tk.W)
 
-        # Keybinding Frame
-        keybinding_frame = ttk.LabelFrame(main_frame, text='Keybindings', padding="5")
-        keybinding_frame.grid(column=0, row=3, columnspan=3, sticky=(tk.W, tk.E))
+        ttk.Label(settings_frame, text='Random Range (s):').grid(column=0, row=3)
+        self.random_delay_range = ttk.Scale(settings_frame, from_=0, to=5, orient=tk.HORIZONTAL, length=180)
+        self.random_delay_range.set(0)
+        self.random_delay_range.grid(column=1, row=3)
 
-        ttk.Label(keybinding_frame, text='Start Key:').grid(column=0, row=0)
-        self.start_key_entry = ttk.Entry(keybinding_frame, width=5)
+        self.random_delay_range_value_label = ttk.Label(settings_frame, text='0.0')
+        self.random_delay_range_value_label.grid(column=2, row=3, padx=10)
+        self.random_delay_range.bind("<Motion>", self.update_random_delay_range_value)
+        
+        ttk.Button(settings_frame, text='- Remove Last', command=self.remove_last, width=15).grid(column=0, row=4, pady=5)
+        # Removed "Clear Positions" button
+        ttk.Button(settings_frame, text='Preview Actions', command=self.preview_actions, width=15).grid(column=0, row=5, pady=5)
+        
+        # Start/Stop Controls
+        control_frame = ttk.LabelFrame(main_frame, text='Controls', padding="5")
+        control_frame.grid(column=0, row=3, columnspan=3, sticky=(tk.W, tk.E))
+
+        self.start_button = ttk.Button(control_frame, text='Start', command=self.start_autoclicker, width=8)
+        self.start_button.grid(column=0, row=0)
+
+        self.stop_button = ttk.Button(control_frame, text='Stop', command=self.stop_autoclicker, width=8)
+        self.stop_button.grid(column=1, row=0)
+
+        # Keybind Settings
+        keybind_frame = ttk.LabelFrame(main_frame, text='Keybind Settings', padding="5")
+        keybind_frame.grid(column=0, row=4, columnspan=3, sticky=(tk.W, tk.E))
+
+        ttk.Label(keybind_frame, text='Start Key:').grid(column=0, row=0)
+        self.start_key_entry = ttk.Entry(keybind_frame, width=10)
         self.start_key_entry.insert(0, self.start_key)
         self.start_key_entry.grid(column=1, row=0)
+        ttk.Button(keybind_frame, text='Set Start Key', command=self.set_start_key, width=15).grid(column=2, row=0)
 
-        ttk.Label(keybinding_frame, text='Stop Key:').grid(column=0, row=1)
-        self.stop_key_entry = ttk.Entry(keybinding_frame, width=5)
+        ttk.Label(keybind_frame, text='Stop Key:').grid(column=0, row=1)
+        self.stop_key_entry = ttk.Entry(keybind_frame, width=10)
         self.stop_key_entry.insert(0, self.stop_key)
         self.stop_key_entry.grid(column=1, row=1)
+        ttk.Button(keybind_frame, text='Set Stop Key', command=self.set_stop_key, width=15).grid(column=2, row=1)
 
-        ttk.Button(keybinding_frame, text='Apply', command=self.apply_keybindings).grid(column=2, row=0, rowspan=2)
-
-        # Action List Frame
-        action_list_frame = ttk.LabelFrame(main_frame, text='Action List', padding="5")
-        action_list_frame.grid(column=0, row=4, columnspan=3, sticky=(tk.W, tk.E))
-
-        self.positions_list = tk.Listbox(action_list_frame, height=5, width=30)
-        self.positions_list.grid(column=0, row=0, columnspan=3)
-
-        ttk.Button(action_list_frame, text='Save', command=self.save_config, width=6).grid(column=0, row=1)
-        ttk.Button(action_list_frame, text='Load', command=self.load_config, width=6).grid(column=1, row=1)
-        ttk.Button(action_list_frame, text='Clear', command=self.clear_positions, width=6).grid(column=2, row=1)
-
-        # Control Buttons
-        self.start_button = tk.Button(main_frame, text='Start', command=self.start_autoclicker, bg='green', fg='white', width=8, height=1)
-        self.start_button.grid(column=0, row=5, pady=10)
-        self.stop_button = tk.Button(main_frame, text='Stop', command=self.stop_autoclicker, bg='red', fg='white', width=8, height=1)
-        self.stop_button.grid(column=1, row=5, pady=10)
-        ttk.Button(main_frame, text='Exit', command=self.exit_program, width=8).grid(column=2, row=5, pady=10)
-
-        # Repetition Count Label
-        self.repetition_label = ttk.Label(main_frame, text='Repetitions Remaining: 0')
-        self.repetition_label.grid(column=0, row=6, columnspan=3, pady=10)
-
-        ttk.Label(main_frame, text=f'Version: {VERSION}').grid(column=0, row=7, columnspan=3, sticky=tk.E)
-
-        self.window.bind('<<PositionAdded>>', self.on_position_added)
-        self.update_positions_list()
-        self.start_keyboard_listener()
-        self.window.mainloop()
-
-    def apply_keybindings(self):
-        """Apply new keybindings for start and stop actions."""
-        self.start_key = self.start_key_entry.get().lower()
-        self.stop_key = self.stop_key_entry.get().lower()
-        self.save_config()
-        messagebox.showinfo("Keybindings", "Keybindings updated successfully!")
-
-    def start_keyboard_listener(self):
-        """Start the keyboard event listener."""
-        def on_press(key):
-            try:
-                if key.name.lower() == self.start_key:
-                    self.start_autoclicker()
-                elif key.name.lower() == self.stop_key:
-                    self.stop_autoclicker()
-            except AttributeError:
-                pass
-
-        self.keyboard_listener = keyboard.Listener(on_press=on_press)
+        self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
         self.keyboard_listener.start()
 
-    def update_wait_time_value(self, event):
-        """Update wait time display value."""
-        self.wait_time_value_label.config(text=f'{self.wait_time.get():.1f}')
+        # Actions List Frame
+        actions_list_frame = ttk.LabelFrame(main_frame, text='Actions List', padding="5")
+        actions_list_frame.grid(column=0, row=5, columnspan=3, sticky=(tk.W, tk.E))
 
-    def update_count_value(self, event):
-        """Update the repetition count display value."""
-        self.count_value_label.config(text=str(int(self.count.get())))
+        self.actions_listbox = tk.Listbox(actions_list_frame, height=8)
+        self.actions_listbox.grid(column=0, row=0, columnspan=3)
 
-    def start_autoclicker(self):
-        """Start the autoclicker."""
-        if not self.running:
-            self.running = True
-            threading.Thread(target=self.run_autoclicker, daemon=True).start()
-            logging.info('Autoclicker started.')
-            self.start_button.config(state=tk.DISABLED, bg='#a0a0a0')
-            self.stop_button.config(state=tk.NORMAL, bg='red')
+        self.update_actions_list()
 
-    def stop_autoclicker(self):
-        """Stop the autoclicker."""
-        self.running = False
-        logging.info('Autoclicker stopped.')
-        self.start_button.config(state=tk.NORMAL, bg='green')
-        self.stop_button.config(state=tk.DISABLED, bg='#a0a0a0')
+        # Save, Load, Clear All Buttons
+        ttk.Button(actions_list_frame, text='Save', command=self.save_config, width=10).grid(column=0, row=1, pady=5)
+        ttk.Button(actions_list_frame, text='Load', command=self.load_config, width=10).grid(column=1, row=1, pady=5)
+        ttk.Button(actions_list_frame, text='Clear All', command=self.clear_positions, width=10).grid(column=2, row=1, pady=5)
 
-    def exit_program(self):
-        """Exit the program."""
-        self.stop_autoclicker()
-        if self.keyboard_listener:
-            self.keyboard_listener.stop()
-        if self.start_mouse_listener_thread:
-            self.start_mouse_listener_thread.join()
-        self.window.destroy()
-        logging.info('Exiting program.')
-
-    def update_positions_list(self):
-        """Update the positions list in the UI."""
-        self.positions_list.delete(0, tk.END)
-        for pos in self.positions:
-            if isinstance(pos, tuple) and len(pos) == 2 and isinstance(pos[0], int):
-                self.positions_list.insert(tk.END, f'Click at {pos}')
-            elif isinstance(pos, tuple) and pos[0] in ['scroll_up', 'scroll_down']:
-                self.positions_list.insert(tk.END, f'Scroll {pos[0]} by {pos[1]}')
-
+        self.window.mainloop()
+    
     def add_click(self):
-        """Add a click action."""
+        """Start adding a click position."""
         self.adding_position = True
-        self.last_action = None
-        self.start_mouse_listener_thread = threading.Thread(target=self.start_mouse_listener, daemon=True)
+        self.start_mouse_listener_thread = threading.Thread(target=self.start_mouse_listener)
         self.start_mouse_listener_thread.start()
 
     def add_scroll(self, direction: str):
         """Add a scroll action."""
-        try:
-            amount = float(self.scroll_amount.get())
-            self.last_action = (f'scroll_{direction}', amount)
-            self.window.event_generate('<<PositionAdded>>')
-        except ValueError:
-            logging.error('Invalid scroll amount. Please enter a numeric value.')
-            messagebox.showerror("Error", "Invalid scroll amount. Please enter a numeric value.")
+        amount = float(self.scroll_amount.get())
+        self.positions.append((f'scroll_{direction}', amount))
+        self.update_actions_list()
+
+    def update_actions_list(self):
+        """Update the displayed list of positions."""
+        if self.actions_listbox:
+            self.actions_listbox.delete(0, tk.END)
+            for pos in self.positions:
+                self.actions_listbox.insert(tk.END, pos)
 
     def remove_last(self):
-        """Remove the last action from the list."""
+        """Remove the last recorded action."""
         if self.positions:
             self.positions.pop()
-            self.update_positions_list()
-            logging.info('Removed last position.')
+        self.update_actions_list()
 
-    def on_position_added(self, event):
-        """Handle position added events."""
-        if self.last_action:
-            self.positions.append(self.last_action)
-            self.update_positions_list()
-            self.last_action = None
+    def start_autoclicker(self):
+        """Start the autoclicker with the configured actions."""
+        self.running = True
+        self.start_button.config(state='disabled')
+        self.stop_button.config(state='normal')
+        repetitions = int(self.count.get())
+        wait_time = self.wait_time.get()
+        for _ in range(repetitions):
+            if not self.running:
+                break
+            self.perform_actions(self.positions, wait_time, self.get_dpi_scaling())
+        self.running = False
+        self.start_button.config(state='normal')
+        self.stop_button.config(state='disabled')
 
-    def run_autoclicker(self):
-        """Run the autoclicker actions."""
+    def stop_autoclicker(self):
+        """Stop the autoclicker."""
+        self.running = False
+        self.start_button.config(state='normal')
+        self.stop_button.config(state='disabled')
+
+    def on_key_press(self, key):
+        """Handle key press events."""
         try:
-            count = int(self.count.get())
-            wait_time = float(self.wait_time.get())
-            dpi_scaling = float(self.dpi_scale_entry.get())
+            if hasattr(key, 'char'):
+                key_char = key.char
+            else:
+                key_char = str(key).replace("'", "").lower()
 
-            logging.info(f'Starting autoclicker for {count} repetitions...')
-            for i in range(count):
-                if not self.running:
-                    break
-                self.perform_actions(self.positions, wait_time, dpi_scaling)
-                self.update_repetition_count(count - i - 1)
-                time.sleep(wait_time)
-            logging.info('Autoclicker finished.')
-        except ValueError:
-            logging.error('Invalid input. Please enter numeric values.')
-            messagebox.showerror("Error", "Invalid input. Please enter numeric values.")
-        except Exception as e:
-            logging.error(f'Error: {e}')
-            messagebox.showerror("Error", f"An error occurred: {e}")
-        finally:
-            self.running = False
-            self.window.after(0, self.reset_buttons)
+            if key_char == self.start_key and not self.running:
+                self.start_autoclicker()
+            elif key_char == self.stop_key and self.running:
+                self.stop_autoclicker()
+        except AttributeError:
+            pass
 
-    def update_repetition_count(self, remaining_reps: int):
-        """Update the repetition count display."""
-        self.window.after(0, self.repetition_label.config, {'text': f'Repetitions Remaining: {remaining_reps}'})
+    def toggle_randomize_delays(self):
+        """Toggle randomize delays option."""
+        self.randomize_delays = bool(self.randomize_delays_var.get())
 
-    def reset_buttons(self):
-        """Reset the start and stop buttons to their initial states."""
-        self.start_button.config(state=tk.NORMAL, bg='green')
-        self.stop_button.config(state=tk.DISABLED, bg='#a0a0a0')
+    def update_wait_time_value(self, event):
+        """Update the display value of wait time."""
+        self.wait_time_value_label.config(text=f'{self.wait_time.get():.1f}')
 
-if __name__ == "__main__":
-    app = Autoclicker()
-    app.run()
+    def update_count_value(self, event):
+        """Update the display value of action count."""
+        self.count_value_label.config(text=f'{int(self.count.get())}')
+
+    def update_random_delay_range_value(self, event):
+        """Update the display value of random delay range."""
+        self.random_delay_range_value_label.config(text=f'{self.random_delay_range.get():.1f}')
+
+    def set_start_key(self):
+        """Set the start key from the entry."""
+        self.start_key = self.start_key_entry.get().lower()
+        self.save_config()
+
+    def set_stop_key(self):
+        """Set the stop key from the entry."""
+        self.stop_key = self.stop_key_entry.get().lower()
+        self.save_config()
+
+    def preview_actions(self):
+        """Preview the list of actions in a message box."""
+        actions_preview = '\n'.join(map(str, self.positions))
+        messagebox.showinfo("Action Preview", f"Actions:\n{actions_preview}")
+
+if __name__ == '__main__':
+    autoclicker = Autoclicker()
+    autoclicker.run()
